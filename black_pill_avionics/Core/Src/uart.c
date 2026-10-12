@@ -17,7 +17,7 @@ void uart_init(USART_TypeDef *uart, uint32_t brr){
 void uart_transmit(USART_TypeDef *uart, uint8_t control_signal){
 
 	while (!(uart->SR & (1U << 7)));
-		uart->DR = control_signal;
+	uart->DR = control_signal;
 }
 
 uint8_t uart_receive(USART_TypeDef *uart){
