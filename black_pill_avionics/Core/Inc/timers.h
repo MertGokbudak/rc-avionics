@@ -8,7 +8,9 @@ void pwm_init(TIM_TypeDef *timer,
 		uint32_t psc,
 		uint32_t arr);
 
-void pwm_set(TIM_TypeDef *timer, uint8_t chanel, uint16_t us);
+void pwm_set(TIM_TypeDef *timer,
+		uint8_t chanel,
+		uint16_t us);
 
 
 

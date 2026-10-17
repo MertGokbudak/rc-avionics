@@ -1,0 +1,236 @@
+#include "lcd.h"
+#include "gpio.h"
+#include "spi.h"
+
+static const uint8_t font5x7[][5] = {
+    {0x00,0x00,0x00,0x00,0x00}, // ' '
+    {0x00,0x00,0x5F,0x00,0x00}, // '!'
+    {0x00,0x07,0x00,0x07,0x00}, // '"'
+    {0x14,0x7F,0x14,0x7F,0x14}, // '#'
+    {0x24,0x2A,0x7F,0x2A,0x12}, // '$'
+    {0x23,0x13,0x08,0x64,0x62}, // '%'
+    {0x36,0x49,0x55,0x22,0x50}, // '&'
+    {0x00,0x05,0x03,0x00,0x00}, // '''
+    {0x00,0x1C,0x22,0x41,0x00}, // '('
+    {0x00,0x41,0x22,0x1C,0x00}, // ')'
+    {0x08,0x2A,0x1C,0x2A,0x08}, // '*'
+    {0x08,0x08,0x3E,0x08,0x08}, // '+'
+    {0x00,0x50,0x30,0x00,0x00}, // ','
+    {0x08,0x08,0x08,0x08,0x08}, // '-'
+    {0x00,0x60,0x60,0x00,0x00}, // '.'
+    {0x20,0x10,0x08,0x04,0x02}, // '/'
+    {0x3E,0x51,0x49,0x45,0x3E}, // '0'
+    {0x00,0x42,0x7F,0x40,0x00}, // '1'
+    {0x42,0x61,0x51,0x49,0x46}, // '2'
+    {0x21,0x41,0x45,0x4B,0x31}, // '3'
+    {0x18,0x14,0x12,0x7F,0x10}, // '4'
+    {0x27,0x45,0x45,0x45,0x39}, // '5'
+    {0x3C,0x4A,0x49,0x49,0x30}, // '6'
+    {0x01,0x71,0x09,0x05,0x03}, // '7'
+    {0x36,0x49,0x49,0x49,0x36}, // '8'
+    {0x06,0x49,0x49,0x29,0x1E}, // '9'
+    {0x00,0x36,0x36,0x00,0x00}, // ':'
+    {0x00,0x56,0x36,0x00,0x00}, // ';'
+    {0x00,0x08,0x14,0x22,0x41}, // '<'
+    {0x14,0x14,0x14,0x14,0x14}, // '='
+    {0x41,0x22,0x14,0x08,0x00}, // '>'
+    {0x02,0x01,0x51,0x09,0x06}, // '?'
+    {0x32,0x49,0x79,0x41,0x3E}, // '@'
+    {0x7E,0x11,0x11,0x11,0x7E}, // 'A'
+    {0x7F,0x49,0x49,0x49,0x36}, // 'B'
+    {0x3E,0x41,0x41,0x41,0x22}, // 'C'
+    {0x7F,0x41,0x41,0x22,0x1C}, // 'D'
+    {0x7F,0x49,0x49,0x49,0x41}, // 'E'
+    {0x7F,0x09,0x09,0x01,0x01}, // 'F'
+    {0x3E,0x41,0x41,0x51,0x32}, // 'G'
+    {0x7F,0x08,0x08,0x08,0x7F}, // 'H'
+    {0x00,0x41,0x7F,0x41,0x00}, // 'I'
+    {0x20,0x40,0x41,0x3F,0x01}, // 'J'
+    {0x7F,0x08,0x14,0x22,0x41}, // 'K'
+    {0x7F,0x40,0x40,0x40,0x40}, // 'L'
+    {0x7F,0x02,0x04,0x02,0x7F}, // 'M'
+    {0x7F,0x04,0x08,0x10,0x7F}, // 'N'
+    {0x3E,0x41,0x41,0x41,0x3E}, // 'O'
+    {0x7F,0x09,0x09,0x09,0x06}, // 'P'
+    {0x3E,0x41,0x51,0x21,0x5E}, // 'Q'
+    {0x7F,0x09,0x19,0x29,0x46}, // 'R'
+    {0x46,0x49,0x49,0x49,0x31}, // 'S'
+    {0x01,0x01,0x7F,0x01,0x01}, // 'T'
+    {0x3F,0x40,0x40,0x40,0x3F}, // 'U'
+    {0x1F,0x20,0x40,0x20,0x1F}, // 'V'
+    {0x7F,0x20,0x18,0x20,0x7F}, // 'W'
+    {0x63,0x14,0x08,0x14,0x63}, // 'X'
+    {0x03,0x04,0x78,0x04,0x03}, // 'Y'
+    {0x61,0x51,0x49,0x45,0x43}, // 'Z'
+};
+
+
+void lcd_pin_init(void){
+
+
+	gpio_init(GPIOB, 12, gpio_output, gpio_push_pull, 0);// CC1101 CS
+	gpio_high(GPIOB, 12);// keep CC1101 off the bus
+
+	gpio_init(GPIOB,3,gpio_af,gpio_push_pull,5);//SCK
+	gpio_init(GPIOB,4,gpio_af,gpio_push_pull,5);//MISO
+	gpio_init(GPIOB,5,gpio_af,gpio_push_pull,5);//MOSI
+	gpio_init(GPIOB,6,gpio_output,gpio_push_pull,0);//CS lcd
+	gpio_init(GPIOA,9,gpio_output,gpio_push_pull,0);// DC lcd Data/Command
+	gpio_init(GPIOB,8,gpio_output,gpio_push_pull,0);// RESET lcd
+
+	gpio_high(GPIOB, 6);//CS LCD HIGH
+
+	spi_init(SPI1,1);
+}
+
+void lcd_cmd(uint8_t c){
+
+	gpio_low(GPIOB, 6);//CS LCD LOW
+	gpio_low(GPIOA, 9);//DC low
+
+	spi_transfer(SPI1, c);
+	gpio_high(GPIOB, 6);
+}
+
+void lcd_data(uint8_t c){
+
+	gpio_low(GPIOB, 6);//CS LCD LOW
+	gpio_high(GPIOA, 9);//DC high
+
+	spi_transfer(SPI1, c);
+	gpio_high(GPIOB, 6);
+}
+
+void delay(uint32_t n){
+	for (volatile uint32_t i=0; i<n; i++);
+}
+
+void lcd_init(void){
+
+	lcd_pin_init();
+
+	gpio_low(GPIOB, 8);// RESET
+	delay(1000);
+
+	gpio_high(GPIOB, 8);
+	delay(100000);
+
+	//wake up
+	lcd_cmd(0x11);
+
+	delay(1000000);
+
+	//style
+	lcd_cmd(0x3A);
+	lcd_data(0x55);
+
+	//direction
+	lcd_cmd(0x36);
+	lcd_data(0x88);
+
+	//screen enable
+	lcd_cmd(0x29);
+}
+
+
+void lcd_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color){
+
+
+	lcd_cmd(0x2A);
+	lcd_data(x >> 8);
+	lcd_data(x & 0xFF);
+	lcd_data((x+w-1) >> 8);
+	lcd_data((x+w-1) & 0xFF);
+
+	lcd_cmd(0x2B);
+	lcd_data(y >> 8);
+	lcd_data(y & 0xFF);
+	lcd_data((y+h-1) >> 8);
+	lcd_data((y+h-1) & 0xFF);
+
+	// Start writing pixels
+	lcd_cmd(0x2C);
+
+	// Send the color for every pixel (high byte, then low byte)
+	for (uint32_t i=0; i<(uint32_t)(w*h); i++){
+		lcd_data(color >> 8);
+		lcd_data(color & 0xFF);
+	}
+}
+
+// fg = text color, bg = background color, size = scale (1, 2, 3...)
+void lcd_char(uint16_t x, uint16_t y, char c, uint16_t fg, uint16_t bg, uint8_t size)
+{
+	for (uint8_t col = 0; col < 5; col++)
+	{
+		uint8_t bits = font5x7[c - ' '][col];
+
+		for (uint8_t row = 0; row < 7; row++)
+		{
+			if (bits & (1 << row))
+			{
+				lcd_fill(x + col * size, y + row * size, size, size, fg);  // draw text color
+			}
+			else
+			{
+				lcd_fill(x + col * size, y + row * size, size, size, bg);  // draw background color
+			}
+		}
+	}
+}
+
+
+void lcd_text(uint16_t x, uint16_t y, const char *s, uint16_t fg, uint16_t bg, uint8_t size)
+{
+	while (*s != '\0')
+	{
+		lcd_char(x, y, *s, fg, bg, size);
+		x = x + 6 * size;
+		s++;
+	}
+}
+
+
+// Draws an integer (negative too) at (x, y).
+// width = how many characters the field takes. Unused places are filled
+//         with spaces, so a shorter new value fully erases the old one.
+void lcd_number(uint16_t x, uint16_t y, int32_t n, uint8_t width,
+                uint16_t fg, uint16_t bg, uint8_t size)
+{
+	uint8_t numbers_reversed[10];   // int32 has at most 10 digits
+	uint8_t i = 0;                  // how many digits we found
+	uint8_t count = 0;              // how many characters we drew
+
+	// 1. Sign: draw '-' and continue with the positive value
+	if (n < 0) {
+		lcd_char(x, y, '-', fg, bg, size);
+		x = x + 6 * size;
+		count++;
+		n = -n;
+	}
+
+	// 2. Split into digits (they come out reversed: 2048 -> 8, 4, 0, 2)
+	while (1) {
+		numbers_reversed[i] = n % 10;
+		n = n / 10;
+		i++;
+
+		if (n == 0) {
+			break;
+		}
+	}
+
+	// 3. Draw the digits from the last found to the first (correct order)
+	for (int t = i; t > 0; t--) {
+		lcd_char(x, y, numbers_reversed[t - 1] + '0', fg, bg, size);
+		x = x + 6 * size;
+		count++;
+	}
+
+	// 4. Fill the rest of the field with spaces (erases old digits)
+	while (count < width) {
+		lcd_char(x, y, ' ', fg, bg, size);
+		x = x + 6 * size;
+		count++;
+	}
+}

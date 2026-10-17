@@ -1,7 +1,11 @@
 #include "gpio.h"
 
 
-void gpio_init(GPIO_TypeDef *port, uint32_t pin, gpio_mode_t mode, gpio_pp_od_t pp_od, uint32_t af)
+void gpio_init(GPIO_TypeDef *port,
+		uint32_t pin,
+		gpio_mode_t mode,
+		gpio_pp_od_t pp_od,
+		uint32_t af)
 {
 
 	if (port == GPIOA) RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
@@ -18,3 +22,15 @@ void gpio_init(GPIO_TypeDef *port, uint32_t pin, gpio_mode_t mode, gpio_pp_od_t 
 	port->MODER |= ((uint32_t)mode << (pin * 2));
 
 }
+
+
+void gpio_low(GPIO_TypeDef *port, uint32_t pin){
+
+	port->ODR &= ~(1U << pin);
+}
+void gpio_high(GPIO_TypeDef *port, uint32_t pin){
+
+	port->ODR |= (1U << pin);
+}
+
+
