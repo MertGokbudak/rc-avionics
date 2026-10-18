@@ -12,6 +12,7 @@ void uart_transmit(USART_TypeDef *uart,
 
 uint8_t uart_receive(USART_TypeDef *uart);
 
+uint8_t uart_available(USART_TypeDef *uart);
 
 
 #endif /* INC_UART_H_ */

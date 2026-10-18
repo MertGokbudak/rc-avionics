@@ -26,5 +26,11 @@ uint8_t uart_receive(USART_TypeDef *uart){
 	return uart->DR;
 }
 
+uint8_t uart_available(USART_TypeDef *uart)
+{
+    if (uart->SR & USART_SR_RXNE)
+        return 1;
+    return 0;
+}
 
 
