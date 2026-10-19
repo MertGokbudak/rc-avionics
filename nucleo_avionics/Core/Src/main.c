@@ -35,31 +35,121 @@ void hc12_init(void){
 	uart_init(USART3, (16000000/19200));
 }
 
+void nrf24_init(void){
+
+	//SCK and MOSI using same pins with lcd (SPI1)
+	gpio_init(GPIOB,4,gpio_af,gpio_push_pull,5);//MISO
+	gpio_high(GPIOB,12);
+	gpio_init(GPIOB,12,gpio_output,gpio_push_pull,0);//CS
+	gpio_low(GPIOC,7);
+	gpio_init(GPIOC,7,gpio_output,gpio_push_pull,0);//CE
+
+}
+
+// Single-byte command, returns STATUS
+uint8_t nrf_command(uint8_t cmd)
+{
+	gpio_low(GPIOB, 12);
+	uint8_t status = spi_transfer(SPI1, cmd);
+	gpio_high(GPIOB, 12);
+	return status;
+}
+
+uint8_t nrf24_read(uint8_t reg)
+{
+	gpio_low(GPIOB, 12);
+	spi_transfer(SPI1,0x00 | reg);// read reg
+	uint8_t spi_response = spi_transfer(SPI1, 0xFF); // dummy byte to read
+	gpio_high(GPIOB, 12);
+	return spi_response;
+}
+
+void nrf24_write(uint8_t reg, uint8_t value)
+{
+	gpio_low(GPIOB, 12);
+	spi_transfer(SPI1, 0x20 | reg);//write to reg
+	spi_transfer(SPI1, value);
+	gpio_high(GPIOB, 12);
+}
+
+
+void nrf24_send_packet(uint16_t *data, uint8_t len)
+{
+	nrf24_write(0x07, 0x30);       // clear old TX_DS / MAX_RT
+	nrf_command(0xE1);             // FLUSH_TX: drop old unsent packet
+
+	gpio_low(GPIOB, 12);
+	spi_transfer(SPI1, 0xA0);      // W_TX_PAYLOAD
+	for (uint8_t i = 0; i < len; i++){//NRF sends 8 byte now can be increased
+		spi_transfer(SPI1, data[i] & 0xFF);
+		spi_transfer(SPI1, data[i] >> 8);
+	}
+	gpio_high(GPIOB, 12);
+
+	gpio_high(GPIOC, 7);           // CE pulse > 10 us: send
+	for (volatile uint32_t i = 0; i < 50; i++);
+	gpio_low(GPIOC, 7);
+}
+
+
+uint8_t telemetry[35];
+uint8_t telemetry_index= 0;
+uint8_t packet_ready = 0;
+
+void receive_telemetry(void){
+
+	if (!uart_available(USART3))
+		return;
+
+	uint8_t t = uart_receive(USART3);
+
+	if (telemetry_index == 0 && t != 0x55)
+		return;
+
+	telemetry[telemetry_index++] = t;
+
+	if (telemetry_index == 35) {
+		packet_ready = 1;
+		telemetry_index = 0;
+	}
+}
+
 
 int main(void){
 
 	lcd_init();
 	joystick_init();
 	hc12_init();
+	nrf24_init();
+
+	for (volatile uint32_t i = 0; i < 400000; i++);  // ~100 ms: chip power-on, BEFORE first write
+
+	nrf24_write(0x00, 0x0E);// CONFIG: CRC on, 2-byte CRC, power up, TX mode
+	for (volatile uint32_t i = 0; i < 10000; i++);   // ~2.5 ms: PWR_UP settle, AFTER CONFIG
+
 
 	lcd_fill(0, 0, 240, 320, BLACK);       // clear screen once
-
+	// Group headers (small)
+	lcd_text(10, 12,  "JOYSTICK", CYAN, BLACK, 1);
+	lcd_text(10, 70,  "ACCEL",    CYAN, BLACK, 1);
+	lcd_text(10, 148, "GYRO",     CYAN, BLACK, 1);
+	lcd_text(10, 226, "GPS",      CYAN, BLACK, 1);
+	lcd_text(10, 284, "LINK",     CYAN, BLACK, 1);
 	// Labels
-	lcd_text(10, 10,  "X1",  WHITE, BLACK, 2);
-	lcd_text(10, 40,  "Y1",  WHITE, BLACK, 2);
-	lcd_text(10, 70,  "AX",  WHITE, BLACK, 2);
+	lcd_text(10, 22,  "X1",  WHITE, BLACK, 2);
+	lcd_text(10, 42,  "Y1",  WHITE, BLACK, 2);
+	lcd_text(10, 80,  "AX",  WHITE, BLACK, 2);
 	lcd_text(10, 100, "AY",  WHITE, BLACK, 2);
-	lcd_text(10, 130, "AZ",  WHITE, BLACK, 2);
-	lcd_text(10, 160, "T",   WHITE, BLACK, 2);
-	lcd_text(10, 190, "RX",  WHITE, BLACK, 2);
-	lcd_text(10, 220, "LAT", WHITE, BLACK, 2);
-	lcd_text(10, 250, "LON", WHITE, BLACK, 2);
+	lcd_text(10, 120, "AZ",  WHITE, BLACK, 2);
+	lcd_text(10, 158, "GX",  WHITE, BLACK, 2);
+	lcd_text(10, 178, "GY",  WHITE, BLACK, 2);
+	lcd_text(10, 198, "GZ",  WHITE, BLACK, 2);
+	lcd_text(10, 236, "LAT", WHITE, BLACK, 2);
+	lcd_text(10, 256, "LON", WHITE, BLACK, 2);
+	lcd_text(10, 294, "RX",  WHITE, BLACK, 2);
 
-	uint8_t counter = 0;
 	uint32_t rx_count = 0;
-
-	int16_t ax = 0, ay = 0, az = 0, temp_x10 = 0;
-
+	int16_t ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
 	char lat_s[11] = "0000000000";
 	char lon_s[12] = "00000000000";
 
@@ -67,64 +157,46 @@ int main(void){
 	while (1) {
 
 		joystick_read();
+		receive_telemetry();
 
-		uart_transmit(USART3, 0xAA);
-		uart_transmit(USART3, joystick_values[0] >> 8);
-		uart_transmit(USART3, joystick_values[0] & 0xFF);
+		nrf24_send_packet(joystick_values, 2);
 
-		uart_transmit(USART3, joystick_values[1] >> 8);
-		uart_transmit(USART3, joystick_values[1] & 0xFF);
+		for (uint32_t i = 0; i < 5000 && !packet_ready; i++)
+			receive_telemetry();
 
-		uint32_t t = 0;
-		while (!uart_available(USART3) && t < 100000){
-			t++;
-		}
+		if (packet_ready) {
+			packet_ready = 0;
 
-		if (uart_available(USART3) && uart_receive(USART3) == 0x55) {
-			uint8_t d[8];
-			for (int i = 0; i < 8; i++)
-				d[i] = uart_receive(USART3);
-			ax       = (int16_t)((d[0] << 8) | d[1]);
-			ay       = (int16_t)((d[2] << 8) | d[3]);
-			az       = (int16_t)((d[4] << 8) | d[5]);
-			temp_x10 = (int16_t)((d[6] << 8) | d[7]);
+			uint8_t sum = 0;
+			for (int i = 0; i < 34; i++)
+				sum += telemetry[i];
 
+			if (sum == telemetry[34]) {
 
-			char g[21];
-			int n = 0;
-			uint32_t w = 0;
-			while (n < 21 && w < 20000) {
-				if (uart_available(USART3)) {
-					g[n++] = uart_receive(USART3);
-					w = 0;
-				} else {
-					w++;
-				}
+				ax = (int16_t)((telemetry[1]  << 8) | telemetry[2]);
+				ay = (int16_t)((telemetry[3]  << 8) | telemetry[4]);
+				az = (int16_t)((telemetry[5]  << 8) | telemetry[6]);
+				gx = (int16_t)((telemetry[7]  << 8) | telemetry[8]);
+				gy = (int16_t)((telemetry[9]  << 8) | telemetry[10]);
+				gz = (int16_t)((telemetry[11] << 8) | telemetry[12]);
+
+				for (int k = 0; k < 10; k++) lat_s[k] = telemetry[13 + k];
+				for (int k = 0; k < 11; k++) lon_s[k] =telemetry[23 + k];
+
+				rx_count++;
+
+				lcd_number(80, 22,  joystick_values[0], 4, WHITE, BLACK, 2);
+				lcd_number(80, 42,  joystick_values[1], 4, WHITE, BLACK, 2);
+				lcd_number(80, 80,  ax, 6, WHITE, BLACK, 2);
+				lcd_number(80, 100, ay, 6, WHITE, BLACK, 2);
+				lcd_number(80, 120, az, 6, WHITE, BLACK, 2);
+				lcd_number(80, 158, gx, 6, WHITE, BLACK, 2);
+				lcd_number(80, 178, gy, 6, WHITE, BLACK, 2);
+				lcd_number(80, 198, gz, 6, WHITE, BLACK, 2);
+				lcd_text(80, 236, lat_s, WHITE, BLACK, 2);
+				lcd_text(80, 256, lon_s, WHITE, BLACK, 2);
+				lcd_number(80, 294, rx_count, 6, WHITE, BLACK, 2);
 			}
-
-			if (n == 21) {
-				for (int k = 0; k < 10; k++) lat_s[k] = g[k];
-				for (int k = 0; k < 11; k++) lon_s[k] = g[10 + k];
-			}
-
-			rx_count++;
-		}
-
-		counter++;
-		if (counter >= 5) {
-			counter = 0;
-
-			lcd_number(80, 10,  joystick_values[0], 4, WHITE, BLACK, 2);
-			lcd_number(80, 40,  joystick_values[1], 4, WHITE, BLACK, 2);
-
-			lcd_number(80, 70,  ax,       6, WHITE, BLACK, 2);
-			lcd_number(80, 100, ay,       6, WHITE, BLACK, 2);
-			lcd_number(80, 130, az,       6, WHITE, BLACK, 2);
-			lcd_number(80, 160, temp_x10, 6, WHITE, BLACK, 2);
-			lcd_number(80, 190, rx_count, 6, WHITE, BLACK, 2);
-
-			lcd_text(80, 220, lat_s, WHITE, BLACK, 2);
-			lcd_text(80, 250, lon_s, WHITE, BLACK, 2);
 		}
 	}
 }

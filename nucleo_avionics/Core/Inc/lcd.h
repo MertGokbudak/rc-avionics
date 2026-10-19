@@ -7,6 +7,7 @@
 #define BLACK  0x0000
 #define WHITE  0xFFFF
 #define RED    0xF800
+#define CYAN  0x07FF
 
 void lcd_init(void);
 void lcd_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
