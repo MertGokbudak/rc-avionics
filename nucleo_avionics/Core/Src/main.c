@@ -9,8 +9,8 @@ void joystick_init(void){
 
 	gpio_init(GPIOA,0,gpio_analog,gpio_push_pull,0);
 	gpio_init(GPIOA,1,gpio_analog,gpio_push_pull,0);
-	gpio_init(GPIOA,4,gpio_analog,gpio_push_pull,0);
-	gpio_init(GPIOB,0,gpio_analog,gpio_push_pull,0);
+	//gpio_init(GPIOA,4,gpio_analog,gpio_push_pull,0);
+	//gpio_init(GPIOB,0,gpio_analog,gpio_push_pull,0);
 	adc_init(ADC1);
 
 	// Sample time = 84 cycles for channels 0, 1, 4, 8 (SMPR2: 3 bits per channel)
@@ -23,8 +23,8 @@ void joystick_read(void){
 
 	joystick_values[0] = adc_read(ADC1, 0);
 	joystick_values[1] = adc_read(ADC1, 1);
-	joystick_values[2] = adc_read(ADC1, 4);
-	joystick_values[3] = adc_read(ADC1, 8);
+	//joystick_values[2] = adc_read(ADC1, 4);
+	//joystick_values[3] = adc_read(ADC1, 8);
 }
 
 void hc12_init(void){
@@ -92,7 +92,7 @@ void nrf24_send_packet(uint16_t *data, uint8_t len)
 }
 
 
-uint8_t telemetry[35];
+uint8_t telemetry[39];
 uint8_t telemetry_index= 0;
 uint8_t packet_ready = 0;
 
@@ -108,7 +108,7 @@ void receive_telemetry(void){
 
 	telemetry[telemetry_index++] = t;
 
-	if (telemetry_index == 35) {
+	if (telemetry_index == 39) {
 		packet_ready = 1;
 		telemetry_index = 0;
 	}
@@ -134,7 +134,7 @@ int main(void){
 	lcd_text(10, 70,  "ACCEL",    CYAN, BLACK, 1);
 	lcd_text(10, 148, "GYRO",     CYAN, BLACK, 1);
 	lcd_text(10, 226, "GPS",      CYAN, BLACK, 1);
-	lcd_text(10, 284, "LINK",     CYAN, BLACK, 1);
+	lcd_text(10, 284, "BARO",     CYAN, BLACK, 1);   // was LINK
 	// Labels
 	lcd_text(10, 22,  "X1",  WHITE, BLACK, 2);
 	lcd_text(10, 42,  "Y1",  WHITE, BLACK, 2);
@@ -146,13 +146,20 @@ int main(void){
 	lcd_text(10, 198, "GZ",  WHITE, BLACK, 2);
 	lcd_text(10, 236, "LAT", WHITE, BLACK, 2);
 	lcd_text(10, 256, "LON", WHITE, BLACK, 2);
-	lcd_text(10, 294, "RX",  WHITE, BLACK, 2);
+	lcd_text(10,  294, "TE", WHITE, BLACK, 2);
+	lcd_text(130, 294, "AL", WHITE, BLACK, 2);
 
-	uint32_t rx_count = 0;
+	lcd_text(86,  294, ".", WHITE, BLACK, 2);
+	lcd_text(206, 294, ".", WHITE, BLACK, 2);
+
+
 	int16_t ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
 	char lat_s[11] = "0000000000";
 	char lon_s[12] = "00000000000";
 
+	int16_t temp = 0, alt = 0;
+
+	uint8_t draw_step = 0;
 
 	while (1) {
 
@@ -161,17 +168,17 @@ int main(void){
 
 		nrf24_send_packet(joystick_values, 2);
 
-		for (uint32_t i = 0; i < 5000 && !packet_ready; i++)
+		for (uint32_t i = 0; i < 1000 && !packet_ready; i++)
 			receive_telemetry();
 
 		if (packet_ready) {
 			packet_ready = 0;
 
 			uint8_t sum = 0;
-			for (int i = 0; i < 34; i++)
+			for (int i = 0; i < 38; i++)
 				sum += telemetry[i];
 
-			if (sum == telemetry[34]) {
+			if (sum == telemetry[38]) {
 
 				ax = (int16_t)((telemetry[1]  << 8) | telemetry[2]);
 				ay = (int16_t)((telemetry[3]  << 8) | telemetry[4]);
@@ -183,20 +190,35 @@ int main(void){
 				for (int k = 0; k < 10; k++) lat_s[k] = telemetry[13 + k];
 				for (int k = 0; k < 11; k++) lon_s[k] =telemetry[23 + k];
 
-				rx_count++;
+				temp = (int16_t)((telemetry[34] << 8) | telemetry[35]);
+				alt  = (int16_t)((telemetry[36] << 8) | telemetry[37]);
 
-				lcd_number(80, 22,  joystick_values[0], 4, WHITE, BLACK, 2);
-				lcd_number(80, 42,  joystick_values[1], 4, WHITE, BLACK, 2);
-				lcd_number(80, 80,  ax, 6, WHITE, BLACK, 2);
-				lcd_number(80, 100, ay, 6, WHITE, BLACK, 2);
-				lcd_number(80, 120, az, 6, WHITE, BLACK, 2);
-				lcd_number(80, 158, gx, 6, WHITE, BLACK, 2);
-				lcd_number(80, 178, gy, 6, WHITE, BLACK, 2);
-				lcd_number(80, 198, gz, 6, WHITE, BLACK, 2);
-				lcd_text(80, 236, lat_s, WHITE, BLACK, 2);
-				lcd_text(80, 256, lon_s, WHITE, BLACK, 2);
-				lcd_number(80, 294, rx_count, 6, WHITE, BLACK, 2);
+				draw_step = 1;
+
 			}
+		}
+
+
+		if (draw_step) {
+			switch (draw_step) {
+			case 1:  lcd_number(80, 22,  joystick_values[0], 4, WHITE, BLACK, 2); break;
+			case 2:  lcd_number(80, 42,  joystick_values[1], 4, WHITE, BLACK, 2); break;
+			case 3:  lcd_number(80, 80,  ax, 6, WHITE, BLACK, 2); break;
+			case 4:  lcd_number(80, 100, ay, 6, WHITE, BLACK, 2); break;
+			case 5:  lcd_number(80, 120, az, 6, WHITE, BLACK, 2); break;
+			case 6:  lcd_number(80, 158, gx, 6, WHITE, BLACK, 2); break;
+			case 7:  lcd_number(80, 178, gy, 6, WHITE, BLACK, 2); break;
+			case 8:  lcd_number(80, 198, gz, 6, WHITE, BLACK, 2); break;
+			case 9:  lcd_text(80, 236, lat_s, WHITE, BLACK, 2); break;
+			case 10: lcd_text(80, 256, lon_s, WHITE, BLACK, 2); break;
+			case 11: lcd_number(50,  294, temp / 100,        3, WHITE, BLACK, 2); break;
+			case 12: lcd_number(98,  294, (temp % 100) / 10, 1, WHITE, BLACK, 2); break;
+			case 13: lcd_number(170, 294, alt / 10,          3, WHITE, BLACK, 2); break;
+			case 14: lcd_number(218, 294, alt % 10,          1, WHITE, BLACK, 2); break;
+			}
+			draw_step++;
+			if (draw_step > 14)
+				draw_step = 0;
 		}
 	}
 }

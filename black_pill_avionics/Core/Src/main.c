@@ -4,6 +4,10 @@
 #include "uart.h"
 #include "i2c.h"
 #include "spi.h"
+#include "bmp280.h"
+
+uint8_t bmp_id;
+int32_t bmp_temp, bmp_press, bmp_alt;
 
 #define MPU_ADDR 0x68
 
@@ -182,6 +186,9 @@ int main(void){
 	nrf24_init();
 	nrf24_config();
 
+	bmp_id = bmp280_init();
+	bmp280_zero();
+
 	SysTick_Config(16000);
 	uint32_t last_telemetry = 0;
 
@@ -201,6 +208,8 @@ int main(void){
 
 
 			I2C_read(I2C1, 0x3B, MPU_ADDR, mpu_raw, 14);
+			bmp280_read(&bmp_temp, &bmp_press);
+			bmp_alt = bmp280_altitude_dm(bmp_press);
 
 			ax = (int16_t)((mpu_raw[0] << 8) | mpu_raw[1]);
 			ay = (int16_t)((mpu_raw[2] << 8) | mpu_raw[3]);
@@ -222,7 +231,7 @@ int main(void){
 				gps_ready = 0;
 			}
 
-			uint8_t packet[35];
+			uint8_t packet[39];
 
 			packet[0]  = 0x55;
 			packet[1]  = ax >> 8;  packet[2]  = ax & 0xFF;
@@ -235,13 +244,16 @@ int main(void){
 			for (int k = 0; k < 10; k++) {packet[13 + k] = lat_s[k];}
 			for (int k = 0; k < 11; k++) {packet[23 + k] = lon_s[k];}
 
+			packet[34] = bmp_temp >> 8;  packet[35] = bmp_temp & 0xFF;
+			packet[36] = bmp_alt  >> 8;  packet[37] = bmp_alt  & 0xFF;
+
 			uint8_t sum = 0;
-			for (int i = 0; i < 34; i++){
+			for (int i = 0; i < 38; i++){
 				sum += packet[i];
 			}
-			packet[34] = sum;
+			packet[38] = sum;
 
-			for (int i = 0; i < 35; i++){
+			for (int i = 0; i < 39; i++){
 				uart_transmit(USART1, packet[i]);}
 
 		}
