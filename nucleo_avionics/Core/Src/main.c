@@ -13,8 +13,9 @@ void joystick_init(void){
 	//gpio_init(GPIOB,0,gpio_analog,gpio_push_pull,0);
 	adc_init(ADC1);
 
-	// Sample time = 84 cycles for channels 0, 1, 4, 8 (SMPR2: 3 bits per channel)
-	ADC1->SMPR2 |= (4 << 0) | (4 << 3) | (4 << 12) | (4 << 24);
+	// Sample time = 84 cycles for channels 0, 1(SMPR2: 3 bits per channel)
+	ADC1->SMPR2 |= (4 << 0) | (4 << 3);
+	//ADC1->SMPR2 |= (4 << 12) | (4 << 24); //4,8
 }
 
 uint16_t joystick_values[4];
@@ -91,7 +92,6 @@ void nrf24_send_packet(uint16_t *data, uint8_t len)
 	gpio_low(GPIOC, 7);
 }
 
-
 uint8_t telemetry[39];
 uint8_t telemetry_index= 0;
 uint8_t packet_ready = 0;
@@ -122,9 +122,11 @@ int main(void){
 	hc12_init();
 	nrf24_init();
 
+
 	for (volatile uint32_t i = 0; i < 400000; i++);  // ~100 ms: chip power-on, BEFORE first write
 
 	nrf24_write(0x00, 0x0E);// CONFIG: CRC on, 2-byte CRC, power up, TX mode
+
 	for (volatile uint32_t i = 0; i < 10000; i++);   // ~2.5 ms: PWR_UP settle, AFTER CONFIG
 
 
@@ -134,7 +136,7 @@ int main(void){
 	lcd_text(10, 70,  "ACCEL",    CYAN, BLACK, 1);
 	lcd_text(10, 148, "GYRO",     CYAN, BLACK, 1);
 	lcd_text(10, 226, "GPS",      CYAN, BLACK, 1);
-	lcd_text(10, 284, "BARO",     CYAN, BLACK, 1);   // was LINK
+	lcd_text(10, 284, "BARO",     CYAN, BLACK, 1);
 	// Labels
 	lcd_text(10, 22,  "X1",  WHITE, BLACK, 2);
 	lcd_text(10, 42,  "Y1",  WHITE, BLACK, 2);
@@ -154,6 +156,7 @@ int main(void){
 
 
 	int16_t ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+
 	char lat_s[11] = "0000000000";
 	char lon_s[12] = "00000000000";
 
@@ -164,8 +167,6 @@ int main(void){
 	while (1) {
 
 		joystick_read();
-		receive_telemetry();
-
 		nrf24_send_packet(joystick_values, 2);
 
 		for (uint32_t i = 0; i < 1000 && !packet_ready; i++)
@@ -194,10 +195,8 @@ int main(void){
 				alt  = (int16_t)((telemetry[36] << 8) | telemetry[37]);
 
 				draw_step = 1;
-
 			}
 		}
-
 
 		if (draw_step) {
 			switch (draw_step) {
@@ -216,9 +215,12 @@ int main(void){
 			case 13: lcd_number(170, 294, alt / 10,          3, WHITE, BLACK, 2); break;
 			case 14: lcd_number(218, 294, alt % 10,          1, WHITE, BLACK, 2); break;
 			}
+
 			draw_step++;
-			if (draw_step > 14)
+			if (draw_step > 14){
 				draw_step = 0;
+			}
+
 		}
 	}
 }

@@ -6,11 +6,7 @@
 #include "spi.h"
 #include "bmp280.h"
 
-uint8_t bmp_id;
-int32_t bmp_temp, bmp_press, bmp_alt;
-
 #define MPU_ADDR 0x68
-
 
 void hc12_init(void){
 
@@ -46,17 +42,10 @@ void mpu6050_init(void){
 uint8_t mpu_raw[14];
 int16_t ax, ay, az, gx, gy, gz;
 
-
-void telemetry(int16_t t)
-{
-	uart_transmit(USART1, (uint8_t)(t >> 8));
-	uart_transmit(USART1, (uint8_t)(t & 0xFF));
-}
-
-
 volatile uint8_t gps_ready = 0;
-int32_t gps_lat = 0;
-int32_t gps_lon = 0;
+
+int32_t bmp_temp, bmp_press, bmp_alt;
+
 
 void gps_init(void){
 
@@ -119,7 +108,6 @@ void nrf24_init(void){
 	gpio_init(GPIOB,0,gpio_output,gpio_push_pull,0);//CE
 
 	spi_init(SPI1, 1);
-	GPIOA->PUPDR |= (1 << 12);// PA6 pull-up: reads 1 if nRF24 missing
 }
 
 
@@ -179,6 +167,8 @@ void SysTick_Handler(void) { ms_ticks++; }
 
 int main(void){
 
+	gpio_init(GPIOC, 13, gpio_output, gpio_push_pull, 0);
+
 	hc12_init();
 	servo_init();
 	mpu6050_init();
@@ -186,7 +176,7 @@ int main(void){
 	nrf24_init();
 	nrf24_config();
 
-	bmp_id = bmp280_init();
+	bmp280_init();
 	bmp280_zero();
 
 	SysTick_Config(16000);
@@ -206,6 +196,7 @@ int main(void){
 		if (ms_ticks - last_telemetry >= 100) {
 			last_telemetry = ms_ticks;
 
+			GPIOC->ODR ^= (1 << 13);
 
 			I2C_read(I2C1, 0x3B, MPU_ADDR, mpu_raw, 14);
 			bmp280_read(&bmp_temp, &bmp_press);
@@ -220,15 +211,13 @@ int main(void){
 
 
 			if (gps_ready){
-
-				if (gps_character[gps_field(2)] != ',') {
-
-					for (int x = 0; x < 10; x++)
-					{ lat_s[x] = gps_character[gps_field(2) + x];}
-					for (int y = 0; y< 11; y++)
-					{ lon_s[y ] = gps_character[gps_field(4) + y];}
-				}
-				gps_ready = 0;
+			    int lat_i = gps_field(2);
+			    int lon_i = gps_field(4);
+			    if (gps_character[lat_i] != ',') {
+			        for (int x = 0; x < 10; x++) lat_s[x] = gps_character[lat_i + x];
+			        for (int y = 0; y < 11; y++) lon_s[y] = gps_character[lon_i + y];
+			    }
+			    gps_ready = 0;
 			}
 
 			uint8_t packet[39];
