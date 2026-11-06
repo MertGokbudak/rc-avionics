@@ -68,37 +68,37 @@ static const uint8_t font5x7[][5] = {
 void lcd_pin_init(void){
 
 
-	gpio_init(GPIOB, 12, gpio_output, gpio_push_pull, 0);// CC1101 CS
-	gpio_high(GPIOB, 12);// keep CC1101 off the bus
+	gpio_init(GPIOB, 12, gpio_output, gpio_push_pull, 0);// nRF24 CS
+	gpio_high(GPIOB, 12);// keep nRF24 off the bus
 
-	gpio_init(GPIOB,3,gpio_af,gpio_push_pull,5);//SCK
-	gpio_init(GPIOB,4,gpio_af,gpio_push_pull,5);//MISO
-	gpio_init(GPIOB,5,gpio_af,gpio_push_pull,5);//MOSI
-	gpio_init(GPIOB,6,gpio_output,gpio_push_pull,0);//CS lcd
-	gpio_init(GPIOA,9,gpio_output,gpio_push_pull,0);// DC lcd Data/Command
-	gpio_init(GPIOB,8,gpio_output,gpio_push_pull,0);// RESET lcd
+	gpio_init(GPIOB,3,gpio_af,gpio_push_pull,5);//SCK  (D3)
+	gpio_init(GPIOB,4,gpio_af,gpio_push_pull,5);//MISO (D5)
+	gpio_init(GPIOB,5,gpio_af,gpio_push_pull,5);//MOSI (D4)
+	gpio_init(GPIOB,10,gpio_output,gpio_push_pull,0);//CS lcd (D6)
+	gpio_init(GPIOA,9,gpio_output,gpio_push_pull,0);// DC lcd Data/Command (D8)
+	gpio_init(GPIOA,8,gpio_output,gpio_push_pull,0);// RESET lcd (D7)
 
-	gpio_high(GPIOB, 6);//CS LCD HIGH
+	gpio_high(GPIOB, 10);//CS LCD HIGH
 
 	spi_init(SPI1,1);
 }
 
 void lcd_cmd(uint8_t c){
 
-	gpio_low(GPIOB, 6);//CS LCD LOW
+	gpio_low(GPIOB, 10);//CS LCD LOW
 	gpio_low(GPIOA, 9);//DC low
 
 	spi_transfer(SPI1, c);
-	gpio_high(GPIOB, 6);
+	gpio_high(GPIOB, 10);
 }
 
 void lcd_data(uint8_t c){
 
-	gpio_low(GPIOB, 6);//CS LCD LOW
+	gpio_low(GPIOB, 10);//CS LCD LOW
 	gpio_high(GPIOA, 9);//DC high
 
 	spi_transfer(SPI1, c);
-	gpio_high(GPIOB, 6);
+	gpio_high(GPIOB, 10);
 }
 
 void delay(uint32_t n){
@@ -109,10 +109,10 @@ void lcd_init(void){
 
 	lcd_pin_init();
 
-	gpio_low(GPIOB, 8);// RESET
+	gpio_low(GPIOA, 8);// RESET
 	delay(1000);
 
-	gpio_high(GPIOB, 8);
+	gpio_high(GPIOA, 8);
 	delay(100000);
 
 	//wake up
