@@ -12,6 +12,8 @@ void pwm_set(TIM_TypeDef *timer,
 		uint8_t chanel,
 		uint16_t us);
 
+void timer5_delay_init(void);
+void delay5_us(uint32_t us);
 
 
 #endif /* INC_TIMERS_H_ */

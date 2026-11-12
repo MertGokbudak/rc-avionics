@@ -1,3 +1,6 @@
+
+//Most of the data are from the datasheet of the sensor(BMP280), AI helped.
+
 #include "bmp280.h"
 #include "i2c.h"
 

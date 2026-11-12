@@ -29,6 +29,22 @@ void pwm_init(TIM_TypeDef *timer,
 	timer->CR1 |= TIM_CR1_CEN;
 }
 
+void timer5_delay_init(void)
+{
+	RCC->APB1ENR |= RCC_APB1ENR_TIM5EN;
+	TIM5->PSC = 15;
+	TIM5->ARR = 0xFFFFFFFF;
+	TIM5->EGR = TIM_EGR_UG;
+	TIM5->CR1 = TIM_CR1_CEN;
+}
+
+void delay5_us(uint32_t us)
+{
+	uint32_t start = TIM5->CNT;
+	while (TIM5->CNT - start < us);
+}
+
+
 void pwm_set(TIM_TypeDef *timer,
 		uint8_t chanel,
 		uint16_t us)

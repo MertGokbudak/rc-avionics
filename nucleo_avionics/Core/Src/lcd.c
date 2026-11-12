@@ -80,7 +80,6 @@ void lcd_pin_init(void){
 
 	gpio_high(GPIOB, 10);//CS LCD HIGH
 
-	spi_init(SPI1,1);
 }
 
 void lcd_cmd(uint8_t c){
