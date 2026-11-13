@@ -1,4 +1,3 @@
-
 //Most of the data are from the datasheet of the sensor(BMP280), AI helped.
 
 #include "bmp280.h"
@@ -27,7 +26,8 @@ uint8_t bmp280_init(void)
     I2C_read(BMP280_I2C, 0xD0, BMP280_ADDR, &id, 1);
 
     // 2. Calibration: 24 bytes, little-endian (low byte first)
-    I2C_read(BMP280_I2C, 0x88, BMP280_ADDR, c, 24);
+    if (I2C_read(BMP280_I2C, 0x88, BMP280_ADDR, c, 24) == 0)
+        return 0;                         // no calibration = no valid results: report failure
     dig_T1 = (uint16_t)(c[1]  << 8 | c[0]);
     dig_T2 = (int16_t) (c[3]  << 8 | c[2]);
     dig_T3 = (int16_t) (c[5]  << 8 | c[4]);
@@ -49,7 +49,8 @@ uint8_t bmp280_init(void)
     return id;
 }
 
-void bmp280_read(int32_t *temp_c100, int32_t *press_pa)
+// 1 = new values written to *temp_c100 / *press_pa, 0 = I2C read failed (outputs untouched)
+uint8_t bmp280_read(int32_t *temp_c100, int32_t *press_pa)
 {
     uint8_t d[6];
     int32_t adc_P, adc_T;
@@ -57,7 +58,8 @@ void bmp280_read(int32_t *temp_c100, int32_t *press_pa)
     int64_t a, b, p;
 
     // Raw data: press msb/lsb/xlsb, temp msb/lsb/xlsb (20 bits each)
-    I2C_read(BMP280_I2C, 0xF7, BMP280_ADDR, d, 6);
+    if (I2C_read(BMP280_I2C, 0xF7, BMP280_ADDR, d, 6) == 0)
+        return 0;                         // read failed: don't compute from garbage
     adc_P = ((int32_t)d[0] << 12) | ((int32_t)d[1] << 4) | (d[2] >> 4);
     adc_T = ((int32_t)d[3] << 12) | ((int32_t)d[4] << 4) | (d[5] >> 4);
 
@@ -74,28 +76,38 @@ void bmp280_read(int32_t *temp_c100, int32_t *press_pa)
     b = b + ((int64_t)dig_P4 << 35);
     a = ((a * a * dig_P3) >> 8) + ((a * dig_P2) << 12);
     a = ((((int64_t)1) << 47) + a) * dig_P1 >> 33;
-    if (a == 0) {            // avoid division by zero
-        *press_pa = 0;
-        return;
-    }
+    if (a == 0)                           // avoid division by zero
+        return 0;
     p = 1048576 - adc_P;
     p = (((p << 31) - b) * 3125) / a;
     a = ((int64_t)dig_P9 * (p >> 13) * (p >> 13)) >> 25;
     b = ((int64_t)dig_P8 * p) >> 19;
     p = ((p + a + b) >> 8) + ((int64_t)dig_P7 << 4);
     *press_pa = (int32_t)(p >> 8);   // result was Pa * 256
+    return 1;
 }
 
+// Store the current pressure as ground level (altitude 0)
 void bmp280_zero(void)
 {
     int32_t t, p, sum = 0;
+    int n = 0;
 
-    for (int i = 0; i < 16; i++) {   // average 16 readings
+    for (int i = 0; i < 20; i++) {   // let the IIR filter settle: read and throw away
         bmp280_read(&t, &p);
-        sum += p;
         delay(200000);
     }
-    p0 = sum / 16;
+
+    for (int i = 0; i < 16; i++) {   // average up to 16 good readings
+        if (bmp280_read(&t, &p)) {
+            sum += p;
+            n++;
+        }
+        delay(200000);
+    }
+
+    if (n > 0)                       // keep the old p0 if every read failed
+        p0 = sum / n;
 }
 
 int32_t bmp280_altitude_dm(int32_t press_pa)

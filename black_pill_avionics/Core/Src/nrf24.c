@@ -84,6 +84,13 @@ void nrf_send(uint8_t *buf, uint8_t len)
 }
 
 
+// result of the last nrf_send: 1 = plane answered (ACK), 0 = no ACK yet
+uint8_t nrf_ack_ok(void)
+{
+	return (nrf_read(0x07) >> 5) & 1;     // STATUS bit 5 = TX_DS
+}
+
+
 /* ---- plane: receive ---- */
 
 void nrf_init_rx(uint8_t len)

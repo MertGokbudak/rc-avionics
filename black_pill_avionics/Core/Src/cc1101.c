@@ -41,6 +41,15 @@ uint8_t cc_status(uint8_t reg)                    // status register 0x30..0x3D
 	return value;
 }
 
+uint8_t cc_read(uint8_t reg)                      // config register 0x00..0x2E
+{
+	gpio_low(CC_CSN_PORT, CC_CSN_PIN);
+	spi_transfer(CC_SPI, 0x80 | reg);             // 0x80 = read, single byte
+	uint8_t value = spi_transfer(CC_SPI, 0x00);
+	gpio_high(CC_CSN_PORT, CC_CSN_PIN);
+	return value;
+}
+
 // 434.4 MHz, GFSK 38.4 kbps, fixed length + CRC (same table on both boards)
 const uint8_t cc_config[][2] = {
 	{0x03, 0x47}, {0x08, 0x04}, {0x0B, 0x06},

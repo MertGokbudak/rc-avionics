@@ -28,6 +28,9 @@ int32_t  bmp_alt;
 
 uint8_t  telem[TELEM_LEN];
 
+uint8_t bmp_id;     // BMP280 chip ID: 0x58 (88) = OK, 0 = sensor did not answer
+
+
 // nRF24 + CC1101
 void spi1_init(void)
 {
@@ -85,7 +88,10 @@ void i2c1_init(void)
 void read_mpu(void)
 {
 	uint8_t b[6];
-	I2C_read(I2C1, 0x3B, 0x68, b, 6);
+	if (I2C_read(I2C1, 0x3B, 0x68, b, 6) == 0) {
+		I2C_recover(I2C1, GPIOB, 8, 9);   // bus stuck: free it (SCL PB8, SDA PB9)
+		return;                           // keep the last angles
+	}
 	ax = (int16_t)(b[0] << 8 | b[1]);
 	ay = (int16_t)(b[2] << 8 | b[3]);
 	az = (int16_t)(b[4] << 8 | b[5]);
@@ -97,8 +103,8 @@ void read_mpu(void)
 
 void read_bmp(void)
 {
-	bmp280_read(&bmp_temp, &bmp_press);
-	bmp_alt = bmp280_altitude_dm(bmp_press);
+	if (bmp280_read(&bmp_temp, &bmp_press))     // only when the read worked
+		bmp_alt = bmp280_altitude_dm(bmp_press);
 }
 
 
@@ -118,7 +124,19 @@ void send_telemetry(void)
 	telem[18] = gps_course;     telem[19] = gps_course >> 8;   // course (direction)
 
 	cc_send(telem, TELEM_LEN);
+}
 
+
+// Radio watchdog: if a radio chip lost its settings (e.g. short power dip
+// reset the chip but not the MCU), set it up again.
+void radio_check(void)
+{
+	if (nrf_read(0x00) != 0x0F) {      // nRF CONFIG: our RX setting (CRC 2 B, power up, RX)
+		nrf_init_rx(CMD_LEN);
+	}
+	if (cc_read(0x06) != TELEM_LEN) {  // CC1101 PKTLEN: our packet length
+		cc_init(TELEM_LEN);
+	}
 }
 
 
@@ -136,15 +154,16 @@ int main(void)
 	gpio_init(GPIOC, 13, gpio_output, gpio_push_pull, 0);   // LED
 
 	i2c1_init();
+	I2C_recover(I2C1, GPIOB, 8, 9);      // a sensor may still be stuck from before the reset
 	I2C_write(I2C1, 0x6B, 0x68, 0x00);   // MPU6050 wake up
-	bmp280_init();
+	bmp_id = bmp280_init();
 	bmp280_zero();
 	gps_init();
 
 	uint32_t last_telem = TIM5->CNT;
 
 	while (1) {
-		receive_command();
+		while (receive_command());   // read every waiting command, the last one wins
 		check_failsafe();
 		gps_update();
 
@@ -153,6 +172,7 @@ int main(void)
 			read_mpu();
 			read_bmp();
 			send_telemetry();
+			radio_check();
 		}
 	}
 }
