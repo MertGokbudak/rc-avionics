@@ -8,6 +8,8 @@ void    nrf_init(void);                             // TX (remote)
 void    nrf_init_rx(uint8_t len);                   // RX (plane)
 void    nrf_send(uint8_t *buf, uint8_t len);
 uint8_t nrf_receive(uint8_t *buf, uint8_t len);     // 1 = new packet in buf
+uint8_t nrf_ack_ok(void);
+
 
 extern uint8_t nrf_ch;
 

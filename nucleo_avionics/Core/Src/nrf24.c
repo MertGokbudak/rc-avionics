@@ -83,6 +83,12 @@ void nrf_send(uint8_t *buf, uint8_t len)
 	gpio_low(NRF_CE_PORT, NRF_CE_PIN);
 }
 
+// result of the last nrf_send: 1 = plane answered (ACK), 0 = no ACK / not sent yet
+uint8_t nrf_ack_ok(void)
+{
+	return (nrf_read(0x07) >> 5) & 1;      // STATUS bit 5 = TX_DS
+}
+
 
 /* ---- plane: receive ---- */
 
@@ -120,3 +126,4 @@ uint8_t nrf_receive(uint8_t *buf, uint8_t len)
 	nrf_write(0x07, 0x40);                // clear RX_DR
 	return 1;
 }
+
