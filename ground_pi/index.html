@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ground station</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { background: #0b0d12; color: #e8e8e8; font-family: monospace; }
+
+  /* two halves: left = instruments, right = map */
+  #main { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
+
+  /* left half: top row, big horizon, bottom row */
+  #left { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-height: 0; }
+  #top, #bottom { display: flex; justify-content: center; gap: 10px; }
+
+  /* horizon fills the space left in the middle; SPEED and ALT sit on its edges */
+  #hz { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  canvas { border-radius: 16px; box-shadow: 0 0 24px #000; }
+
+  .box { background: #151a23; border-radius: 10px; padding: 8px 12px; text-align: center; min-width: 70px; }
+  .box .k { color: #8aa0b8; font-size: 14px; }
+  .box .v { font-size: 26px; font-weight: bold; }
+  .box .u { color: #8aa0b8; font-size: 13px; }
+
+  .side { position: absolute; top: 50%; transform: translateY(-50%);
+          background: rgba(10, 13, 18, 0.75); border: 1px solid #ffffff55; }
+  #lft { left: 0; }
+  #rgt { right: 0; }
+
+  #map { height: 100%; }
+
+  /* narrow screen (iPad portrait, phone): put the map under the instruments */
+  @media (max-width: 900px) {
+    #main { grid-template-columns: 1fr; grid-template-rows: auto 420px; height: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div id="main">
+  <div id="left">
+    <div id="top">
+      <div class="box"><div class="k">CRS</div><div class="v" id="course">-</div><div class="u">deg</div></div>
+      <div class="box"><div class="k">LINK</div><div class="v" id="link">-</div><div class="u">&nbsp;</div></div>
+    </div>
+    <div id="hz">
+      <canvas id="horizon"></canvas>
+      <div id="lft" class="box side"><div class="k">SPEED</div><div class="v" id="speed">-</div><div class="u">km/h</div></div>
+      <div id="rgt" class="box side"><div class="k">ALT</div><div class="v" id="alt">-</div><div class="u">m</div></div>
+    </div>
+    <div id="bottom">
+      <div class="box"><div class="k">TEMP</div><div class="v" id="temp">-</div><div class="u">C</div></div>
+      <div class="box"><div class="k">LAT</div><div class="v" id="lat">-</div><div class="u">deg</div></div>
+      <div class="box"><div class="k">LON</div><div class="v" id="lon">-</div><div class="u">deg</div></div>
+    </div>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script>
+// ---------- settings ----------
+const PITCH_SIGN = -1;      // sensor is mounted so pitch comes reversed: flip it here
+const ROLL_SIGN  = 1;       // set to -1 if roll is reversed too
+const LINK_TIMEOUT = 0.5;   // seconds without a packet -> LOST
+const PRIVATE = true;       // true: hide exact position (screenshots, demos), false: real flight
+
+// ---------- canvas setup: fills the middle cell, sharp on retina ----------
+const hz  = document.getElementById('hz');
+const c   = document.getElementById('horizon');
+const ctx = c.getContext('2d');
+let S;                      // canvas size in CSS pixels (square)
+let PX_PER_DEG;             // pitch scale: pixels per degree
+
+function resize() {
+  S = Math.floor(Math.min(hz.clientWidth, hz.clientHeight));   // biggest square that fits the cell
+  if (S < 150) S = 150;
+  const dpr = window.devicePixelRatio || 1;
+  c.style.width  = S + 'px';
+  c.style.height = S + 'px';
+  c.width  = S * dpr;
+  c.height = S * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  PX_PER_DEG = S / 60;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- drawing ----------
+function drawHorizon(roll, pitch) {
+  const cx = S / 2, cy = S / 2;
+  const big = S * 2;
+
+  ctx.clearRect(0, 0, S, S);
+
+  // 1. moving world: sky, ground, horizon line
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-roll * Math.PI / 180);
+  ctx.translate(0, pitch * PX_PER_DEG);
+
+  let g = ctx.createLinearGradient(0, -S, 0, 0);
+  g.addColorStop(0, '#0047b3');
+  g.addColorStop(1, '#2ea8ff');
+  ctx.fillStyle = g;
+  ctx.fillRect(-big, -big, 2 * big, big);
+
+  g = ctx.createLinearGradient(0, 0, 0, S);
+  g.addColorStop(0, '#c8691c');
+  g.addColorStop(1, '#5a2d0c');
+  ctx.fillStyle = g;
+  ctx.fillRect(-big, 0, 2 * big, big);
+
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-big, 0); ctx.lineTo(big, 0); ctx.stroke();
+  ctx.restore();
+
+  // 2. pitch ladder, only inside a circle in the middle
+  const r = S * 0.42;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r - 30, 0, 2 * Math.PI); ctx.clip();
+  ctx.translate(cx, cy);
+  ctx.rotate(-roll * Math.PI / 180);
+  ctx.translate(0, pitch * PX_PER_DEG);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold ' + Math.round(S / 28) + 'px monospace';
+  ctx.textBaseline = 'middle';
+  for (let d = -40; d <= 40; d += 5) {
+    if (d === 0) continue;
+    const y = -d * PX_PER_DEG;
+    const w = (d % 10 === 0) ? S * 0.18 : S * 0.08;
+    ctx.beginPath(); ctx.moveTo(-w, y); ctx.lineTo(w, y); ctx.stroke();
+    if (d % 10 === 0) {
+      ctx.textAlign = 'right'; ctx.fillText(Math.abs(d), -w - 8, y);
+      ctx.textAlign = 'left';  ctx.fillText(Math.abs(d),  w + 8, y);
+    }
+  }
+  ctx.restore();
+
+  // 3. fixed roll scale
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, r, (-90 - 60) * Math.PI / 180, (-90 + 60) * Math.PI / 180); ctx.stroke();
+  for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) {
+    const len = (a % 30 === 0) ? 18 : 10;
+    const t = (a - 90) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(t) * r,         Math.sin(t) * r);
+    ctx.lineTo(Math.cos(t) * (r + len), Math.sin(t) * (r + len));
+    ctx.stroke();
+  }
+
+  // 4. roll pointer
+  ctx.rotate(-roll * Math.PI / 180);
+  ctx.fillStyle = '#ffd400';
+  ctx.beginPath();
+  ctx.moveTo(0, -r + 2);
+  ctx.lineTo(-10, -r + 20);
+  ctx.lineTo(10, -r + 20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // 5. fixed aircraft symbol
+  ctx.save();
+  ctx.translate(cx, cy);
+  const wing = S * 0.22, gap = S * 0.05;
+  for (const [col, lw] of [['#000000', 9], ['#ffd400', 5]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-wing, 0); ctx.lineTo(-gap, 0); ctx.lineTo(-gap, gap * 0.6);
+    ctx.moveTo( wing, 0); ctx.lineTo( gap, 0); ctx.lineTo( gap, gap * 0.6);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ffd400';
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, 2 * Math.PI); ctx.fill();
+  ctx.restore();
+}
+
+// ---------- map (only if the Leaflet library could be downloaded) ----------
+let map = null, plane = null, firstFix = true;
+if (window.L) {
+  const MAX_ZOOM = PRIVATE ? 12 : 19;           // private: no closer than district level
+  map = L.map('map', { maxZoom: MAX_ZOOM }).setView([41.9, 12.5], 5);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: MAX_ZOOM,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  plane = L.marker([0, 0]);
+} else {
+  document.getElementById('map').textContent = 'Map not available (no internet)';
+}
+
+// ---------- data ----------
+// 45.070312 -> "45.07***" when PRIVATE, "45.07031" otherwise
+function coord(v) {
+  if (PRIVATE) return v.toFixed(2) + '***';
+  return v.toFixed(5);
+}
+
+function show(id, text) {
+  document.getElementById(id).textContent = text;
+}
+
+function showLink(text, color) {
+  const el = document.getElementById('link');
+  el.textContent = text;
+  el.style.color = color;
+}
+
+async function update() {
+  let d;
+  try {
+    const r = await fetch('/data', { cache: 'no-store' });
+    d = await r.json();
+  } catch (e) {
+    showLink('OFF', '#ff4040');                 // Pi not reachable or program stopped
+    return;
+  }
+
+  const roll  = d.roll  * ROLL_SIGN;
+  const pitch = d.pitch * PITCH_SIGN;
+
+  if (d.age === undefined)            showLink('?', '#ffd400');
+  else if (d.age === null)            showLink('WAIT', '#ffd400');
+  else if (d.age < LINK_TIMEOUT)      showLink('OK', '#30ff60');
+  else                                showLink('LOST', '#ff4040');
+
+  show('alt',    d.alt.toFixed(1));
+  show('temp',   d.temp.toFixed(1));
+  show('lat',    coord(d.lat));
+  show('lon',    coord(d.lon));
+  show('speed',  d.speed.toFixed(1));
+  show('course', d.course.toFixed(0));
+
+  if (map && (d.lat !== 0 || d.lon !== 0)) {     // 0,0 = GPS has no fix yet
+    let lat = d.lat, lon = d.lon;
+    if (PRIVATE) {
+      lat = Math.round(lat * 100) / 100;         // snap to a ~1 km grid
+      lon = Math.round(lon * 100) / 100;
+    }
+    plane.setLatLng([lat, lon]);
+    if (firstFix) {
+      plane.addTo(map);
+      map.setView([lat, lon], PRIVATE ? 12 : 17);
+      firstFix = false;
+    }
+  }
+
+  drawHorizon(roll, pitch);
+}
+
+drawHorizon(0, 0);
+setInterval(update, 100);
+</script>
+</body>
+</html>

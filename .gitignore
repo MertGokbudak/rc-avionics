@@ -1,2 +1,6 @@
 Debug/
 Release/
+venv/
+__pycache__/
+*.csv
+logs/
