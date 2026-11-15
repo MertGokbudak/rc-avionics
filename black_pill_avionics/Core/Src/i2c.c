@@ -140,6 +140,7 @@ static void i2c_delay(void)                  // ~10 us: half a clock period at ~
 	for (volatile int i = 0; i < 20; i++);
 }
 
+//AI asistence here down after debug
 /* Bus recovery (I2C spec UM10204, "bus clear"):
  * A slave stopped in the middle of a byte keeps SDA low and waits for clocks.
  * We take the pins away from the I2C peripheral, send up to 9 clocks by hand

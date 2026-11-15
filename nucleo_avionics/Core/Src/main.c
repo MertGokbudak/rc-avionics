@@ -10,6 +10,7 @@
 
 #define CMD_LEN    7
 #define TELEM_LEN  20
+#define PRIVATE    1 // 1: hide exact GPS position on the screen, 0: show it (real flight)
 
 
 uint8_t  cmd[CMD_LEN];
@@ -158,8 +159,22 @@ void screen_update(uint8_t step)
 	case 2: lcd_number(100,  70, pitch,  10, WHITE, BLACK, 2); break;
 	case 3: lcd_number(100,  96, alt/10,    10, WHITE, BLACK, 2); break;
 	case 4: lcd_number(100, 122, temp/10,   10, WHITE, BLACK, 2); break;
-	case 5: lcd_number(100, 160, lat,    10, WHITE, BLACK, 2); break;
-	case 6: lcd_number(100, 186, lon,    10, WHITE, BLACK, 2); break;
+	case 5:
+		if (PRIVATE) {
+			lcd_number(100, 160, lat / 100000, 4, WHITE, BLACK, 2);   // ddmm only
+			lcd_text(148, 160, "*****", WHITE, BLACK, 2);
+		} else {
+			lcd_number(100, 160, lat, 10, WHITE, BLACK, 2);
+		}
+		break;
+	case 6:
+		if (PRIVATE) {
+			lcd_number(100, 186, lon / 100000, 4, WHITE, BLACK, 2);
+			lcd_text(148, 186, "*****", WHITE, BLACK, 2);
+		} else {
+			lcd_number(100, 186, lon, 10, WHITE, BLACK, 2);
+		}
+		break;
 	case 7: lcd_number(100, 212, speed,  10, WHITE, BLACK, 2); break;
 	case 8: lcd_number(100, 238, course, 10, WHITE, BLACK, 2); break;
 	}
